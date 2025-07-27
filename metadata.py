@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 
 from invokeai.invocation_api import (
     BaseInvocation,
@@ -8,40 +8,29 @@ from invokeai.invocation_api import (
     InvocationContext,
     OutputField,
     StringCollectionOutput,
+    BooleanCollectionOutput,
+    IntegerCollectionOutput,
+    FloatCollectionOutput,
     invocation,
     invocation_output,
 )
 from invokeai.backend.util.logging import warning, error
 
 
-@invocation(
-    "extract_image_collection_metadata_item",  # Unique, lowercase, underscore-separated invocation name
-    title="Extract Image Collection Metadata Item",  # User-friendly title for the UI
-    tags=["image", "metadata", "extraction", "collection", "utility"],  # Searchable keywords
-    category="metadata",  # Category for UI organization
-    version="1.0.0",  # Increment this version when making changes, especially to inputs/outputs
-)
-class ExtractImageCollectionMetadataItemInvocation(BaseInvocation):
+class BaseExtractImageCollectionMetadataItemInvocation(BaseInvocation):
     """
-    This node extracts specified metadata values from a collection of input images.
+    Base class for extracting specified metadata values from a collection of input images.
     It takes an image collection and a metadata key string input.
     For each image in the collection, it attempts to retrieve the value associated
-    with the provided key. The extracted values are then compiled into a string 
-    collection. If a key is not found for a particular image, an empty string is 
-    appended to maintain collection length.
+    with the provided key. Subclasses will determine the output collection type.
     """
 
-    # Input Field 1: Image Collection
-    # This input accepts a list of ImageField objects, representing an image collection.
     images: list[ImageField] = InputField(
         description="A collection of images from which to extract metadata.",
         title="Image Collection",
-        ui_order=0,  # Control display order in the UI
+        ui_order=0,
     )
 
-    # Input Field 2: Metadata Key
-    # This string input allows the user to specify which metadata key to extract.
-    # It has a default empty string, so if left blank, no extraction occurs.
     key: str = InputField(
         description="Metadata key to extract values for Output. Leave empty to ignore.",
         title="Metadata Key",
@@ -49,51 +38,146 @@ class ExtractImageCollectionMetadataItemInvocation(BaseInvocation):
         ui_order=1,
     )
 
-    def invoke(self, context: InvocationContext) -> StringCollectionOutput:
+    def _extract_and_process_metadata(
+        self, context: InvocationContext
+    ) -> list[Any]:
         """
-        The core logic of the node.
-        It iterates through the input image collection, fetches each image's metadata,
-        and extracts values for the specified keys, compiling them into output lists.
+        Helper method to extract metadata values, handling missing keys and errors.
+        Returns a list of raw extracted values (or empty strings/None for missing/errors).
         """
+        collected_raw_values: list[Any] = []
 
-        # Initialize list to store extracted values for the provided key.
-        collected_values: list[str] = []
-
-        # Iterate through each ImageField object in the input 'images' collection.
-        # ImageField objects contain the 'image_name' reference needed to load the metadata.
         for img_field in self.images:
             try:
-                # Extract the metadata dictionary from the image field.
-                # metadata.root is dict[str, Any].
                 metadata: Dict[str, Any] = {}
                 image_metadata = context.images.get_metadata(img_field.image_name)
                 if image_metadata is not None:
                     metadata.update(image_metadata.root)
 
-                # If no metadata is found for an image, log a warning and treat it as an empty dictionary
-                # to ensure all output lists maintain consistent lengths.
                 if not metadata:
                     warning(
-                        f"No metadata found for image: '{img_field.image_name}'. Appending empty string."
+                        f"No metadata found for image: '{img_field.image_name}'. Appending empty value."
                     )
-                    metadata = {}  # Use an empty dictionary to avoid KeyError
+                    collected_raw_values.append(None)  # Use None to indicate no value
+                    continue
 
-                if self.key:  # Only attempt to extract if the input self.key string is not empty
-                    # Use .get() with a default of "" to gracefully handle missing self.key
-                    extracted_value = metadata.get(self.key, "")
-                    collected_values.append(
-                        str(extracted_value)
-                    )  # Append the value, ensuring it's a string
+                if self.key:
+                    # Use .get() with a default of None to gracefully handle missing self.key
+                    extracted_value = metadata.get(self.key, None)
+                    collected_raw_values.append(extracted_value)
                 else:
-                    # If the self.key input was empty, append an empty string to the output list.
-                    # This ensures the output list has the same number of elements as the input image collection.
-                    collected_values.append("")
+                    collected_raw_values.append(None)
 
             except Exception as e:
-                # Catch any exceptions during image processing (e.g., image_name not found, metadata parsing errors).
-                # Log the error and append an empty string for the current image.
                 error(f"Error processing image '{img_field.image_name}': {e}")
-                collected_values.append("")
+                collected_raw_values.append(None)
 
-        # Construct and return the output object.
-        return StringCollectionOutput(collection=collected_values)
+        return collected_raw_values
+
+    # The invoke method will be implemented by subclasses to define the specific output type
+    # and how to cast the collected raw values.
+    def invoke(self, context: InvocationContext) -> BaseInvocationOutput:
+        raise NotImplementedError("Subclasses must implement the invoke method.")
+
+
+@invocation(
+    "extract_image_collection_metadata_string",
+    title="Extract Image Collection Metadata (String)",
+    tags=["image", "metadata", "extraction", "collection", "utility", "string"],
+    category="metadata",
+    version="1.0.0",
+)
+class ExtractImageCollectionMetadataStringInvocation(
+    BaseExtractImageCollectionMetadataItemInvocation
+):
+    """
+    This node extracts specified metadata values as strings from a collection of input images.
+    """
+
+    def invoke(self, context: InvocationContext) -> StringCollectionOutput:
+        collected_raw_values = self._extract_and_process_metadata(context)
+        # Convert all values to string. None becomes "None".
+        processed_values = [str(v) if v is not None else "" for v in collected_raw_values]
+        return StringCollectionOutput(collection=processed_values)
+
+
+@invocation(
+    "extract_image_collection_metadata_boolean",
+    title="Extract Image Collection Metadata (Bool)",
+    tags=["image", "metadata", "extraction", "collection", "utility", "boolean"],
+    category="metadata",
+    version="1.0.0",
+)
+class ExtractImageCollectionMetadataBooleanInvocation(
+    BaseExtractImageCollectionMetadataItemInvocation
+):
+    """
+    This node extracts specified metadata values as booleans from a collection of input images.
+    Values are converted to boolean: truthy values become True, falsy values (including None, empty string, 0) become False.
+    """
+
+    def invoke(self, context: InvocationContext) -> BooleanCollectionOutput:
+        collected_raw_values = self._extract_and_process_metadata(context)
+        # Convert values to boolean. None, 0, empty string, etc. become False.
+        processed_values = [bool(v) for v in collected_raw_values]
+        return BooleanCollectionOutput(collection=processed_values)
+
+
+@invocation(
+    "extract_image_collection_metadata_integer",
+    title="Extract Image Collection Metadata (Int)",
+    tags=["image", "metadata", "extraction", "collection", "utility", "integer"],
+    category="metadata",
+    version="1.0.0",
+)
+class ExtractImageCollectionMetadataIntegerInvocation(
+    BaseExtractImageCollectionMetadataItemInvocation
+):
+    """
+    This node extracts specified metadata values as integers from a collection of input images.
+    Non-integer values will attempt to be converted. If conversion fails, 0 is used.
+    """
+
+    def invoke(self, context: InvocationContext) -> IntegerCollectionOutput:
+        collected_raw_values = self._extract_and_process_metadata(context)
+        processed_values: list[int] = []
+        for v in collected_raw_values:
+            try:
+                if v is None:
+                    processed_values.append(0)  # Default for None
+                else:
+                    processed_values.append(int(v))
+            except (ValueError, TypeError):
+                warning(f"Could not convert '{v}' to integer. Using 0.")
+                processed_values.append(0)
+        return IntegerCollectionOutput(collection=processed_values)
+
+
+@invocation(
+    "extract_image_collection_metadata_float",
+    title="Extract Image Collection Metadata (Float)",
+    tags=["image", "metadata", "extraction", "collection", "utility", "float"],
+    category="metadata",
+    version="1.0.0",
+)
+class ExtractImageCollectionMetadataFloatInvocation(
+    BaseExtractImageCollectionMetadataItemInvocation
+):
+    """
+    This node extracts specified metadata values as floats from a collection of input images.
+    Non-float values will attempt to be converted. If conversion fails, 0.0 is used.
+    """
+
+    def invoke(self, context: InvocationContext) -> FloatCollectionOutput:
+        collected_raw_values = self._extract_and_process_metadata(context)
+        processed_values: list[float] = []
+        for v in collected_raw_values:
+            try:
+                if v is None:
+                    processed_values.append(0.0)  # Default for None
+                else:
+                    processed_values.append(float(v))
+            except (ValueError, TypeError):
+                warning(f"Could not convert '{v}' to float. Using 0.0.")
+                processed_values.append(0.0)
+        return FloatCollectionOutput(collection=processed_values)
