@@ -23,7 +23,10 @@ repository's code (or just clone the repository yourself) into your
 ## Overview
 ### Nodes
 - [Concatenate Flux Conditionings](#concatenate-flux-conditionings) - Concatenates the T5 embedding tensors of up to six input Flux Conditioning objects.
-- [Extract Image Collection Metadata Item](#extract-image-collection-metadata-item) - This node extracts specified metadata values from a collection of input images.
+- [Extract Image Collection Metadata (Bool)](#extract-image-collection-metadata-bool) - This node extracts specified metadata values as booleans from a collection of input images.
+- [Extract Image Collection Metadata (Float)](#extract-image-collection-metadata-float) - This node extracts specified metadata values as floats from a collection of input images.
+- [Extract Image Collection Metadata (Int)](#extract-image-collection-metadata-int) - This node extracts specified metadata values as integers from a collection of input images.
+- [Extract Image Collection Metadata (String)](#extract-image-collection-metadata-string) - This node extracts specified metadata values as strings from a collection of input images.
 - [Flux Conditioning Blend](#flux-conditioning-blend) - Performs a blend between two FLUX Conditioning objects using either direct SLERP
 - [Flux Conditioning Delta](#flux-conditioning-delta) - Calculates the delta between feature and reference conditionings,
 - [Flux Conditioning List](#flux-conditioning-list) - Takes multiple optional Flux Conditioning inputs and outputs them as a single
@@ -113,37 +116,97 @@ Provides flexible control over the CLIP embedding: select by 1-indexed input num
 </details>
 
 ---
-### Extract Image Collection Metadata Item
-**ID:** `extract_image_collection_metadata_item`
+### Extract Image Collection Metadata (Bool)
+**ID:** `extract_image_collection_metadata_boolean`
 
 **Category:** metadata
 
-**Tags:** image, metadata, extraction, collection, utility
+**Tags:** image, metadata, extraction, collection, utility, boolean
 
 **Version:** 1.0.0
 
-**Description:** This node extracts specified metadata values from a collection of input images.
+**Description:** This node extracts specified metadata values as booleans from a collection of input images.
 
-It takes an image collection and a metadata key string input.
-    For each image in the collection, it attempts to retrieve the value associated
-    with the provided key. The extracted values are then compiled into a string 
-    collection. If a key is not found for a particular image, an empty string is 
-    appended to maintain collection length.
+Values are converted to boolean: truthy values become True, falsy values (including None, empty string, 0) become False.
 
 <details>
 <summary>
 
-#### Inputs
+#### Output
 
 </summary>
 
-| Name | Type | Description | Default |
-| ---- | ---- | ----------- | ------- |
-| `images` | `list[ImageField]` | A collection of images from which to extract metadata. | None |
-| `key` | `str` | Metadata key to extract values for Output. Leave empty to ignore. |  |
+**Type:** `BooleanCollectionOutput`
+
 
 
 </details>
+
+---
+### Extract Image Collection Metadata (Float)
+**ID:** `extract_image_collection_metadata_float`
+
+**Category:** metadata
+
+**Tags:** image, metadata, extraction, collection, utility, float
+
+**Version:** 1.0.0
+
+**Description:** This node extracts specified metadata values as floats from a collection of input images.
+
+Non-float values will attempt to be converted. If conversion fails, 0.0 is used.
+
+<details>
+<summary>
+
+#### Output
+
+</summary>
+
+**Type:** `FloatCollectionOutput`
+
+
+
+</details>
+
+---
+### Extract Image Collection Metadata (Int)
+**ID:** `extract_image_collection_metadata_integer`
+
+**Category:** metadata
+
+**Tags:** image, metadata, extraction, collection, utility, integer
+
+**Version:** 1.0.0
+
+**Description:** This node extracts specified metadata values as integers from a collection of input images.
+
+Non-integer values will attempt to be converted. If conversion fails, 0 is used.
+
+<details>
+<summary>
+
+#### Output
+
+</summary>
+
+**Type:** `IntegerCollectionOutput`
+
+
+
+</details>
+
+---
+### Extract Image Collection Metadata (String)
+**ID:** `extract_image_collection_metadata_string`
+
+**Category:** metadata
+
+**Tags:** image, metadata, extraction, collection, utility, string
+
+**Version:** 1.0.0
+
+**Description:** This node extracts specified metadata values as strings from a collection of input images.
 
 <details>
 <summary>
