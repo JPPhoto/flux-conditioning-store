@@ -1,20 +1,16 @@
-from typing import Optional, List
-from invokeai.invocation_api import (
-    BaseInvocation,
-    InputField,
-    InvocationContext,
-    invocation,
-    OutputField,
-    invocation_output,
-    BaseInvocationOutput,
-)
 from invokeai.app.invocations.fields import (
     FluxConditioningField,
 )
-from invokeai.app.invocations.primitives import (
-    FluxConditioningOutput,
+from invokeai.backend.util.logging import info, warning
+from invokeai.invocation_api import (
+    BaseInvocation,
+    BaseInvocationOutput,
+    InputField,
+    InvocationContext,
+    OutputField,
+    invocation,
+    invocation_output,
 )
-from invokeai.backend.util.logging import info, warning, error
 
 
 @invocation_output("flux_conditioning_list_output")
@@ -23,6 +19,7 @@ class FluxConditioningListOutput(BaseInvocationOutput):
     Output for the Flux Conditioning List node, providing an ordered list
     of Flux Conditioning objects.
     """
+
     conditioning_list: list[FluxConditioningField] = OutputField(
         description="An ordered list of provided Flux Conditioning objects."
     )
@@ -95,9 +92,9 @@ class FluxConditioningListInvocation(BaseInvocation):
         for i, cond in enumerate(input_fields):
             if cond is not None:
                 ordered_conditionings.append(cond)
-                info(f"Added conditioning from input {i+1} to the list: {cond.conditioning_name}")
+                info(f"Added conditioning from input {i + 1} to the list: {cond.conditioning_name}")
             else:
-                info(f"Input conditioning {i+1} was not provided (None). Skipping.")
+                info(f"Input conditioning {i + 1} was not provided (None). Skipping.")
 
         if not ordered_conditionings:
             warning("No Flux Conditioning inputs were provided. The output list will be empty.")
@@ -106,4 +103,3 @@ class FluxConditioningListInvocation(BaseInvocation):
 
         info(f"Successfully compiled {len(ordered_conditionings)} Flux Conditionings into an ordered list.")
         return FluxConditioningListOutput(conditioning_list=ordered_conditionings)
-

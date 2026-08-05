@@ -1,36 +1,38 @@
 import torch
 
-from invokeai.invocation_api import (
-    BaseInvocation,
-    InputField,
-    InvocationContext,
-    invocation,
-    OutputField,
-    invocation_output,
-    BaseInvocationOutput,
-)
 from invokeai.app.invocations.fields import (
     FluxConditioningField,
 )
-from invokeai.app.invocations.primitives import (
-    FluxConditioningOutput,
-)
 from invokeai.backend.stable_diffusion.diffusion.conditioning_data import (
-    FLUXConditioningInfo,
     ConditioningFieldData,
+    FLUXConditioningInfo,
 )
-from invokeai.backend.util.logging import info, warning, error
+from invokeai.backend.util.logging import error, info, warning
+from invokeai.invocation_api import (
+    BaseInvocation,
+    BaseInvocationOutput,
+    InputField,
+    InvocationContext,
+    OutputField,
+    invocation,
+    invocation_output,
+)
+
 
 # Define a custom output class for the Conditioning Delta and Augmented Conditioning
 @invocation_output("conditioning_delta_and_augmented_output")
 class FluxConditioningDeltaAndAugmentedOutput(BaseInvocationOutput):
     """Output for the Conditioning Delta and Augmented Conditioning."""
-    augmented_conditioning: FluxConditioningField = OutputField(description="The augmented conditioning (base + delta, or just delta)", ui_order=1)
-    delta_conditioning: FluxConditioningField = OutputField(description="The resulting conditioning delta (feature - reference)", ui_order=2)
 
-def _average_conditioning_list(
-    conditioning_list: list[FLUXConditioningInfo]
-) -> FLUXConditioningInfo:
+    augmented_conditioning: FluxConditioningField = OutputField(
+        description="The augmented conditioning (base + delta, or just delta)", ui_order=1
+    )
+    delta_conditioning: FluxConditioningField = OutputField(
+        description="The resulting conditioning delta (feature - reference)", ui_order=2
+    )
+
+
+def _average_conditioning_list(conditioning_list: list[FLUXConditioningInfo]) -> FLUXConditioningInfo:
     """Averages a list of FLUXConditioningInfo objects into a single one."""
     if not conditioning_list:
         raise ValueError("Cannot average an empty list of conditionings.")
@@ -42,7 +44,7 @@ def _average_conditioning_list(
     clip_embeds = []
     for c in conditioning_list:
         if c.clip_embeds is not None:
-            clip_embeds.append(c.clip_embeds.to(target_device)) # Move to target_device
+            clip_embeds.append(c.clip_embeds.to(target_device))  # Move to target_device
     if not clip_embeds:
         raise ValueError("No CLIP embeddings found in the conditioning list to average.")
     avg_clip_embeds = torch.stack(clip_embeds).mean(dim=0)
@@ -51,12 +53,13 @@ def _average_conditioning_list(
     t5_embeds = []
     for c in conditioning_list:
         if c.t5_embeds is not None:
-            t5_embeds.append(c.t5_embeds.to(target_device)) # Move to target_device
+            t5_embeds.append(c.t5_embeds.to(target_device))  # Move to target_device
     avg_t5_embeds = None
     if t5_embeds:
         avg_t5_embeds = torch.stack(t5_embeds).mean(dim=0)
 
     return FLUXConditioningInfo(clip_embeds=avg_clip_embeds, t5_embeds=avg_t5_embeds)
+
 
 @invocation(
     "flux_conditioning_delta_augmentation",
@@ -124,7 +127,7 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
                 return None
         except Exception as e:
             error(f"Failed to load conditioning data for {field.conditioning_name}: {e}")
-            return None    
+            return None
 
     def invoke(self, context: InvocationContext) -> FluxConditioningDeltaAndAugmentedOutput:
         # Determine the target device. Use CUDA if available, otherwise CPU.
@@ -137,7 +140,7 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
             feature_cond_infos = []
             for fc_field in self.feature_conditioning:
                 loaded_info = self._load_conditioning_info(context, fc_field)
-                if loaded_info: # Ensure loaded_info is not None
+                if loaded_info:  # Ensure loaded_info is not None
                     # Move tensors to the target device immediately after loading
                     if loaded_info.clip_embeds is not None:
                         loaded_info.clip_embeds = loaded_info.clip_embeds.to(target_device)
@@ -176,7 +179,7 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
             reference_cond_infos = []
             for rc_field in self.reference_conditioning:
                 loaded_info = self._load_conditioning_info(context, rc_field)
-                if loaded_info: # Ensure loaded_info is not None
+                if loaded_info:  # Ensure loaded_info is not None
                     # Move tensors to the target device immediately after loading
                     if loaded_info.clip_embeds is not None:
                         loaded_info.clip_embeds = loaded_info.clip_embeds.to(target_device)
@@ -185,7 +188,9 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
                     reference_cond_infos.append(loaded_info)
             if not reference_cond_infos:
                 # If a list was provided but no valid conditionings loaded, treat as if None was provided
-                info("Provided reference conditioning list was empty or contained no valid conditionings. Substituting zero tensors.")
+                info(
+                    "Provided reference conditioning list was empty or contained no valid conditionings. Substituting zero tensors."
+                )
                 zero_clip_embeds = torch.zeros_like(feature_avg_info.clip_embeds, device=target_device)
                 zero_t5_embeds = None
                 if feature_avg_info.t5_embeds is not None:
@@ -197,7 +202,7 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
             else:
                 reference_avg_info = _average_conditioning_list(reference_cond_infos)
                 info(f"Averaged {len(reference_cond_infos)} reference conditionings.")
-        else: # Single FluxConditioningField provided
+        else:  # Single FluxConditioningField provided
             reference_avg_info = self._load_conditioning_info(context, self.reference_conditioning)
             if reference_avg_info is None:
                 # If a single field was provided but failed to load, treat as if None was provided
@@ -222,7 +227,7 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
         # Ensure that both clip_embeds are not None before subtraction
         if feature_avg_info.clip_embeds is None or reference_avg_info.clip_embeds is None:
             raise ValueError("CLIP embeddings are missing for delta calculation.")
-            
+
         # All tensors should now be on the same device thanks to prior .to(target_device) calls
         delta_clip_embeds = feature_avg_info.clip_embeds - reference_avg_info.clip_embeds
 
@@ -250,7 +255,7 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
         scaled_delta_conditioning_for_augment = FLUXConditioningInfo(
             clip_embeds=scaled_delta_clip_embeds,
             t5_embeds=scaled_delta_t5_embeds,
-        )        
+        )
 
         # --- Calculate Augmented Conditioning ---
         augmented_conditioning_info: FLUXConditioningInfo
@@ -258,7 +263,9 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
         if self.base_conditioning:
             base_conditioning_info = self._load_conditioning_info(context, self.base_conditioning)
             if base_conditioning_info is None:
-                warning("Base conditioning provided but failed to load. Augmented conditioning will be the scaled delta.")
+                warning(
+                    "Base conditioning provided but failed to load. Augmented conditioning will be the scaled delta."
+                )
                 augmented_conditioning_info = scaled_delta_conditioning_for_augment
             else:
                 # Move base conditioning tensors to the target device
@@ -275,25 +282,40 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
                 scaled_base_t5_embeds = None
                 if base_conditioning_info.t5_embeds is not None:
                     scaled_base_t5_embeds = base_conditioning_info.t5_embeds * self.base_scale
-                
+
                 scaled_base_conditioning_info = FLUXConditioningInfo(
                     clip_embeds=scaled_base_clip_embeds,
                     t5_embeds=scaled_base_t5_embeds,
                 )
 
                 # All tensors should now be on the same device for addition
-                augmented_clip_embeds = scaled_base_conditioning_info.clip_embeds + scaled_delta_conditioning_for_augment.clip_embeds
+                augmented_clip_embeds = (
+                    scaled_base_conditioning_info.clip_embeds + scaled_delta_conditioning_for_augment.clip_embeds
+                )
 
                 augmented_t5_embeds = None
-                if scaled_base_conditioning_info.t5_embeds is not None and scaled_delta_conditioning_for_augment.t5_embeds is not None:
-                    augmented_t5_embeds = scaled_base_conditioning_info.t5_embeds + scaled_delta_conditioning_for_augment.t5_embeds
+                if (
+                    scaled_base_conditioning_info.t5_embeds is not None
+                    and scaled_delta_conditioning_for_augment.t5_embeds is not None
+                ):
+                    augmented_t5_embeds = (
+                        scaled_base_conditioning_info.t5_embeds + scaled_delta_conditioning_for_augment.t5_embeds
+                    )
                     info("T5 embeddings added for augmented conditioning.")
                 elif scaled_base_conditioning_info.t5_embeds is not None:
-                    augmented_t5_embeds = scaled_base_conditioning_info.t5_embeds # Use scaled base T5 if scaled_delta has none
-                    warning("Scaled base conditioning has T5 embeds, but scaled delta does not. Using scaled base T5 for augmented.")
+                    augmented_t5_embeds = (
+                        scaled_base_conditioning_info.t5_embeds
+                    )  # Use scaled base T5 if scaled_delta has none
+                    warning(
+                        "Scaled base conditioning has T5 embeds, but scaled delta does not. Using scaled base T5 for augmented."
+                    )
                 elif scaled_delta_conditioning_for_augment.t5_embeds is not None:
-                    augmented_t5_embeds = scaled_delta_conditioning_for_augment.t5_embeds # Use scaled_delta T5 if base has none
-                    warning("Scaled delta has T5 embeds, but scaled base conditioning does not. Using scaled delta T5 for augmented.")
+                    augmented_t5_embeds = (
+                        scaled_delta_conditioning_for_augment.t5_embeds
+                    )  # Use scaled_delta T5 if base has none
+                    warning(
+                        "Scaled delta has T5 embeds, but scaled base conditioning does not. Using scaled delta T5 for augmented."
+                    )
                 else:
                     info("No T5 embeddings to augment.")
 
@@ -306,10 +328,12 @@ class FluxConditioningDeltaAugmentationInvocation(BaseInvocation):
             augmented_conditioning_info = scaled_delta_conditioning_for_augment
 
         # Save the new conditionings
-        final_delta_to_save_info = delta_conditioning_info # Default to unscaled delta
+        final_delta_to_save_info = delta_conditioning_info  # Default to unscaled delta
 
         if self.scale_delta_output:
-            final_delta_to_save_info = scaled_delta_conditioning_for_augment # If scaling delta output, use the scaled version
+            final_delta_to_save_info = (
+                scaled_delta_conditioning_for_augment  # If scaling delta output, use the scaled version
+            )
             info(f"Delta output is being scaled by {self.delta_scale}.")
         else:
             info("Delta output is not scaled.")
