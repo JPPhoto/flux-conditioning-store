@@ -1,26 +1,27 @@
 import torch
+
+from invokeai.app.invocations.fields import FluxConditioningField
+from invokeai.backend.stable_diffusion.diffusion.conditioning_data import (
+    ConditioningFieldData,
+    FLUXConditioningInfo,
+)
+from invokeai.backend.util.logging import error, info, warning
 from invokeai.invocation_api import (
     BaseInvocation,
+    BaseInvocationOutput,
     InputField,
     InvocationContext,
-    invocation,
     OutputField,
+    invocation,
     invocation_output,
-    BaseInvocationOutput,
 )
-from invokeai.app.invocations.fields import FluxConditioningField
-from invokeai.app.invocations.primitives import FluxConditioningOutput
-from invokeai.backend.stable_diffusion.diffusion.conditioning_data import (
-    FLUXConditioningInfo,
-    ConditioningFieldData,
-)
-from invokeai.backend.util.logging import info, warning, error
-import math
+
 
 # Define a custom output class for control of naming/tooltip.
 @invocation_output("flux_conditioning_blend_output")
 class FluxConditioningBlendOutput(BaseInvocationOutput):
     """Output for the blended Flux Conditionings."""
+
     conditioning: FluxConditioningField = OutputField(description="The interpolated Flux Conditioning")
 
 
@@ -85,10 +86,12 @@ class FluxConditioningBlendInvocation(BaseInvocation):
     """
 
     conditioning_1: FluxConditioningField = InputField(
-        description="The first FLUX Conditioning object.", ui_order=0,
+        description="The first FLUX Conditioning object.",
+        ui_order=0,
     )
     conditioning_2: FluxConditioningField = InputField(
-        description="The second FLUX Conditioning object.", ui_order=1,
+        description="The second FLUX Conditioning object.",
+        ui_order=1,
     )
     alpha: float = InputField(
         default=0.5,
@@ -160,14 +163,13 @@ class FluxConditioningBlendInvocation(BaseInvocation):
         min_shape_len = min(embeds_1.shape[-1], embeds_2.shape[-1])
         embeds_1 = embeds_1[..., :min_shape_len]
         embeds_2 = embeds_2[..., :min_shape_len]
-        
+
         # Ensure dimensions match for element-wise operations (if not already handled by slicing)
         if embeds_1.shape != embeds_2.shape:
-             # Find the minimum shape across all dimensions except the last one for batching scenarios
+            # Find the minimum shape across all dimensions except the last one for batching scenarios
             min_shape_dims = [min(d1, d2) for d1, d2 in zip(embeds_1.shape[:-1], embeds_2.shape[:-1])]
             embeds_1 = embeds_1[[slice(None, dim) for dim in min_shape_dims]]
             embeds_2 = embeds_2[[slice(None, dim) for dim in min_shape_dims]]
-
 
         normalized_embeds_1, magnitude_1 = self._normalize_and_get_magnitude(embeds_1)
         normalized_embeds_2, magnitude_2 = self._normalize_and_get_magnitude(embeds_2)
@@ -182,9 +184,10 @@ class FluxConditioningBlendInvocation(BaseInvocation):
         interpolated_embeds = interpolated_normalized * interpolated_magnitude
         return interpolated_embeds.to(embeds_1.dtype)
 
-
     def invoke(self, context: InvocationContext) -> FluxConditioningBlendOutput:
-        info(f"Interpolating FLUX Conditionings with alpha={self.alpha}, use_magnitude_separation={self.use_magnitude_separation}")
+        info(
+            f"Interpolating FLUX Conditionings with alpha={self.alpha}, use_magnitude_separation={self.use_magnitude_separation}"
+        )
 
         conditioning_info_1 = self._load_conditioning_info(context, self.conditioning_1)
         conditioning_info_2 = self._load_conditioning_info(context, self.conditioning_2)
@@ -204,25 +207,21 @@ class FluxConditioningBlendInvocation(BaseInvocation):
 
         if self.use_magnitude_separation:
             info("Using magnitude separation interpolation method.")
-            interpolated_clip = self._interpolate_embeddings(
-                clip_embeds_1, clip_embeds_2, self.alpha, "CLIP"
-            )
-            interpolated_t5 = self._interpolate_embeddings(
-                t5_embeds_1, t5_embeds_2, self.alpha, "T5"
-            )
+            interpolated_clip = self._interpolate_embeddings(clip_embeds_1, clip_embeds_2, self.alpha, "CLIP")
+            interpolated_t5 = self._interpolate_embeddings(t5_embeds_1, t5_embeds_2, self.alpha, "T5")
         else:
             info("Using direct SLERP interpolation method.")
             if clip_embeds_1 is not None and clip_embeds_2 is not None:
                 # Ensure tensors are on the same device
                 if clip_embeds_1.device != clip_embeds_2.device:
                     clip_embeds_2 = clip_embeds_2.to(clip_embeds_1.device)
-                
+
                 # Align dimensions for CLIP embeddings
                 min_shape_clip = [min(d1, d2) for d1, d2 in zip(clip_embeds_1.shape, clip_embeds_2.shape)]
                 if clip_embeds_1.dim() > 1:
-                    clip_embeds_1 = clip_embeds_1[:, :min_shape_clip[1]]
+                    clip_embeds_1 = clip_embeds_1[:, : min_shape_clip[1]]
                 if clip_embeds_2.dim() > 1:
-                    clip_embeds_2 = clip_embeds_2[:, :min_shape_clip[1]]
+                    clip_embeds_2 = clip_embeds_2[:, : min_shape_clip[1]]
 
                 interpolated_clip = slerp(clip_embeds_1, clip_embeds_2, self.alpha)
             else:
@@ -237,9 +236,9 @@ class FluxConditioningBlendInvocation(BaseInvocation):
                 # Align dimensions for T5 embeddings
                 min_shape_t5 = [min(d1, d2) for d1, d2 in zip(t5_embeds_1.shape, t5_embeds_2.shape)]
                 if t5_embeds_1.dim() > 1:
-                    t5_embeds_1 = t5_embeds_1[:, :min_shape_t5[1]]
+                    t5_embeds_1 = t5_embeds_1[:, : min_shape_t5[1]]
                 if t5_embeds_2.dim() > 1:
-                    t5_embeds_2 = t5_embeds_2[:, :min_shape_t5[1]]
+                    t5_embeds_2 = t5_embeds_2[:, : min_shape_t5[1]]
 
                 interpolated_t5 = slerp(t5_embeds_1, t5_embeds_2, self.alpha)
             else:

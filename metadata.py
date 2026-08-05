@@ -1,20 +1,18 @@
 from typing import Any, Dict
 
+from invokeai.backend.util.logging import error, warning
 from invokeai.invocation_api import (
     BaseInvocation,
     BaseInvocationOutput,
+    BooleanCollectionOutput,
+    FloatCollectionOutput,
     ImageField,
     InputField,
-    InvocationContext,
-    OutputField,
-    StringCollectionOutput,
-    BooleanCollectionOutput,
     IntegerCollectionOutput,
-    FloatCollectionOutput,
+    InvocationContext,
+    StringCollectionOutput,
     invocation,
-    invocation_output,
 )
-from invokeai.backend.util.logging import warning, error
 
 
 class BaseExtractImageCollectionMetadataItemInvocation(BaseInvocation):
@@ -38,9 +36,7 @@ class BaseExtractImageCollectionMetadataItemInvocation(BaseInvocation):
         ui_order=1,
     )
 
-    def _extract_and_process_metadata(
-        self, context: InvocationContext
-    ) -> list[Any]:
+    def _extract_and_process_metadata(self, context: InvocationContext) -> list[Any]:
         """
         Helper method to extract metadata values, handling missing keys and errors.
         Returns a list of raw extracted values (or empty strings/None for missing/errors).
@@ -55,9 +51,7 @@ class BaseExtractImageCollectionMetadataItemInvocation(BaseInvocation):
                     metadata.update(image_metadata.root)
 
                 if not metadata:
-                    warning(
-                        f"No metadata found for image: '{img_field.image_name}'. Appending empty value."
-                    )
+                    warning(f"No metadata found for image: '{img_field.image_name}'. Appending empty value.")
                     collected_raw_values.append(None)  # Use None to indicate no value
                     continue
 
@@ -87,9 +81,7 @@ class BaseExtractImageCollectionMetadataItemInvocation(BaseInvocation):
     category="metadata",
     version="1.0.0",
 )
-class ExtractImageCollectionMetadataStringInvocation(
-    BaseExtractImageCollectionMetadataItemInvocation
-):
+class ExtractImageCollectionMetadataStringInvocation(BaseExtractImageCollectionMetadataItemInvocation):
     """
     This node extracts specified metadata values as strings from a collection of input images.
     """
@@ -108,9 +100,7 @@ class ExtractImageCollectionMetadataStringInvocation(
     category="metadata",
     version="1.0.0",
 )
-class ExtractImageCollectionMetadataBooleanInvocation(
-    BaseExtractImageCollectionMetadataItemInvocation
-):
+class ExtractImageCollectionMetadataBooleanInvocation(BaseExtractImageCollectionMetadataItemInvocation):
     """
     This node extracts specified metadata values as booleans from a collection of input images.
     Values are converted to boolean: truthy values become True, falsy values (including None, empty string, 0) become False.
@@ -130,9 +120,7 @@ class ExtractImageCollectionMetadataBooleanInvocation(
     category="metadata",
     version="1.0.0",
 )
-class ExtractImageCollectionMetadataIntegerInvocation(
-    BaseExtractImageCollectionMetadataItemInvocation
-):
+class ExtractImageCollectionMetadataIntegerInvocation(BaseExtractImageCollectionMetadataItemInvocation):
     """
     This node extracts specified metadata values as integers from a collection of input images.
     Non-integer values will attempt to be converted. If conversion fails, 0 is used.
@@ -160,9 +148,7 @@ class ExtractImageCollectionMetadataIntegerInvocation(
     category="metadata",
     version="1.0.0",
 )
-class ExtractImageCollectionMetadataFloatInvocation(
-    BaseExtractImageCollectionMetadataItemInvocation
-):
+class ExtractImageCollectionMetadataFloatInvocation(BaseExtractImageCollectionMetadataItemInvocation):
     """
     This node extracts specified metadata values as floats from a collection of input images.
     Non-float values will attempt to be converted. If conversion fails, 0.0 is used.

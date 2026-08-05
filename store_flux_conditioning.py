@@ -1,31 +1,28 @@
-import sqlite3
-import uuid
 import io
+import math  # Import math for ceil function
 import os
+import sqlite3
 import time
-import math # Import math for ceil function
+import uuid
 
 import torch
-from typing import Optional, Union
 
-from invokeai.invocation_api import (
-    BaseInvocation,
-    InputField,
-    InvocationContext,
-    invocation,
-    OutputField,
-    invocation_output,
-    BaseInvocationOutput,
-    StringOutput,
-)
 from invokeai.app.invocations.fields import (
     FluxConditioningField,
 )
 from invokeai.backend.stable_diffusion.diffusion.conditioning_data import (
     FLUXConditioningInfo,
-    ConditioningFieldData,
 )
-from invokeai.backend.util.logging import info, warning, error
+from invokeai.backend.util.logging import error, info, warning
+from invokeai.invocation_api import (
+    BaseInvocation,
+    BaseInvocationOutput,
+    InputField,
+    InvocationContext,
+    OutputField,
+    invocation,
+    invocation_output,
+)
 
 # Define the database file name
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flux_conditionings.db")
@@ -33,7 +30,7 @@ DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flux_conditi
 # Global variables for database size management
 MAX_DB_SIZE_MB = 4096
 MARGIN_DB_SIZE_MB = 512
-WARNING_THRESHOLDS_MB = [512, 256, 128, 64] # Warning thresholds below margin
+WARNING_THRESHOLDS_MB = [512, 256, 128, 64]  # Warning thresholds below margin
 
 # Convert to bytes
 MAX_DB_SIZE_BYTES = MAX_DB_SIZE_MB * 1024 * 1024
@@ -61,12 +58,18 @@ def _manage_db_size():
         threshold_bytes = threshold_mb * 1024 * 1024
         # Warn if remaining space falls below a threshold and is still above the next lower threshold
         # This prevents repeated warnings for the same threshold level
-        if remaining_space_to_max < threshold_bytes and (remaining_space_to_max >= (threshold_bytes / 2) or threshold_mb == WARNING_THRESHOLDS_MB[-1]):
-            warning(f"Database space critically low! Only {remaining_space_to_max / (1024 * 1024):.2f} MB remaining until max. Current size: {current_size / (1024 * 1024):.2f} MB")
-            break # Only trigger the highest applicable warning
+        if remaining_space_to_max < threshold_bytes and (
+            remaining_space_to_max >= (threshold_bytes / 2) or threshold_mb == WARNING_THRESHOLDS_MB[-1]
+        ):
+            warning(
+                f"Database space critically low! Only {remaining_space_to_max / (1024 * 1024):.2f} MB remaining until max. Current size: {current_size / (1024 * 1024):.2f} MB"
+            )
+            break  # Only trigger the highest applicable warning
 
     if current_size > MAX_DB_SIZE_BYTES:
-        info(f"Database size {current_size / (1024 * 1024):.2f} MB exceeds maximum allowed size of {MAX_DB_SIZE_MB} MB. Trimming oldest entries.")
+        info(
+            f"Database size {current_size / (1024 * 1024):.2f} MB exceeds maximum allowed size of {MAX_DB_SIZE_MB} MB. Trimming oldest entries."
+        )
         conn = None
         try:
             conn = sqlite3.connect(DB_FILE)
@@ -85,11 +88,11 @@ def _manage_db_size():
             # Calculate the target size to reduce to (MAX_DB_SIZE_BYTES - MARGIN_DB_SIZE_BYTES)
             # And the amount of bytes to delete to reach that target, plus a bit more for margin
             bytes_to_delete = current_size - (MAX_DB_SIZE_BYTES - MARGIN_DB_SIZE_BYTES)
-            
+
             # If for some reason bytes_to_delete is negative (e.g., current_size is already within margin)
             # or if it's too small, ensure we delete at least a minimum fraction or a few entries.
             if bytes_to_delete <= 0:
-                 # If current size is already within target, delete a small, fixed percentage to stay ahead
+                # If current size is already within target, delete a small, fixed percentage to stay ahead
                 delete_ratio = MARGIN_DB_SIZE_BYTES / MAX_DB_SIZE_BYTES
                 num_entries_to_delete = math.ceil(total_entries * delete_ratio)
                 info(f"Database is within target size, proactively deleting {num_entries_to_delete} entries.")
@@ -101,13 +104,13 @@ def _manage_db_size():
 
             # Ensure we delete at least 1 entry if there's an overflow
             num_entries_to_delete = max(1, num_entries_to_delete)
-            
+
             info(f"Attempting to delete {num_entries_to_delete} oldest entries.")
 
             # Delete the oldest entries
             cursor.execute(
                 "DELETE FROM flux_conditionings WHERE id IN (SELECT id FROM flux_conditionings ORDER BY timestamp ASC LIMIT ?)",
-                (num_entries_to_delete,)
+                (num_entries_to_delete,),
             )
             conn.commit()
             info(f"Deleted {num_entries_to_delete} oldest entries.")
@@ -124,7 +127,9 @@ def _manage_db_size():
             if conn:
                 conn.close()
     elif current_size > (MAX_DB_SIZE_BYTES - MARGIN_DB_SIZE_BYTES):
-        warning(f"Database size {current_size / (1024 * 1024):.2f} MB is within the margin of {MARGIN_DB_SIZE_MB} MB from maximum size. Consider reviewing usage.")
+        warning(
+            f"Database size {current_size / (1024 * 1024):.2f} MB is within the margin of {MARGIN_DB_SIZE_MB} MB from maximum size. Consider reviewing usage."
+        )
 
 
 # Create the SQLite database and table if they don't exist
@@ -149,12 +154,15 @@ def _init_db():
     except sqlite3.Error as e:
         error(f"Error initializing database: {e}")
 
+
 # Call the initialization function when the module is loaded
 _init_db()
+
 
 @invocation_output("flux_conditioning_store_output")
 class FluxConditioningStoreOutput(BaseInvocationOutput):
     """Output for the Store Flux Conditioning node."""
+
     conditioning_id: str = OutputField(description="Unique identifier for the stored Flux Conditioning")
 
 
@@ -163,8 +171,8 @@ class FluxConditioningStoreOutput(BaseInvocationOutput):
     title="Store Flux Conditioning",
     tags=["conditioning", "flux", "database", "store"],
     category="conditioning",
-    version="1.0.1", # Updated version due to functional change
-    use_cache=False, # This node modifies external state (database), so caching should be off
+    version="1.0.1",  # Updated version due to functional change
+    use_cache=False,  # This node modifies external state (database), so caching should be off
 )
 class StoreFluxConditioningInvocation(BaseInvocation):
     """
@@ -221,10 +229,10 @@ class StoreFluxConditioningInvocation(BaseInvocation):
         # Store in SQLite
         conn = None
         try:
-            _manage_db_size() # Manage size before inserting new data
+            _manage_db_size()  # Manage size before inserting new data
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
-            timestamp = time.time() # Get current timestamp
+            timestamp = time.time()  # Get current timestamp
             cursor.execute(
                 "INSERT INTO flux_conditionings (id, clip_embeds, t5_embeds, timestamp) VALUES (?, ?, ?, ?)",
                 (conditioning_id, clip_bytes, t5_bytes, timestamp),
